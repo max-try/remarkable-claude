@@ -1,14 +1,14 @@
-# Ink Diary for Claude — reMarkable 2
+# Ink Diary for Claude — reMarkable Paper Pro
 
 A fork of [mmoscat/remarkable-chatgpt](https://github.com/mmoscat/remarkable-chatgpt) (Ink Diary 4.1) that talks to Anthropic's Claude instead of OpenAI.
 
-**Installation and configuration: [INSTALL.md](INSTALL.md).**
+**Paper Pro port in progress.** Start with the Stage 1 test: [docs/paper-pro/STAGE1.md](docs/paper-pro/STAGE1.md). Build details and what's still to confirm on a tablet: [docs/paper-pro/BUILD.md](docs/paper-pro/BUILD.md). [INSTALL.md](INSTALL.md) still describes the earlier reMarkable 2 version; it's rewritten for the Paper Pro in Stage 3.
 
 A Claude button inside the standard notebook app. Tap it to send the visible notebook area to the Claude API over the tablet's Wi-Fi, render the answer in Caveat handwriting, and insert it beneath your writing as a single handwriting image. No companion computer is needed after setup.
 
-Target: **reMarkable 2**, any OS version whose Qt is binary compatible with the SDK used for the build. The checked-in `bin/ink-diary.so` is built with the **3.28.0.172** SDK (Qt 6.10.3). This is a development prototype.
+Target: **reMarkable Paper Pro** ("ferrari"), software **3.29.1.0** (Qt 6.10.3), built in GitHub Actions with reMarkable's official SDK for that version. Support for the reMarkable 2 was dropped. This is a development prototype.
 
-**Port status:** built with the 3.28.0.172 SDK, host unit tests pass, and live web search has been verified against the Claude API. It has not yet been run on a tablet. See VALIDATION.md.
+**Port status:** the Paper Pro screen size, toolbar hiding while the page is read, and answer placement are in the code, the cloud build and host tests pass, and a Stage 1 test build is ready. Nothing has run on a Paper Pro yet. See docs/paper-pro/BUILD.md.
 
 ### Changes from upstream
 
@@ -81,8 +81,8 @@ Venn diagrams support two or three sets with numbered exclusive regions and a re
 
 ## Prototype limits
 
-- Portrait orientation and short answers only. Light gray full-width horizontal rules and thin vertical margin lines (including those partly hidden by plots) are filtered out when locating handwriting. Dark or complex templates may still be treated as ink.
-- The working area is screen pixels x=150..1323, y=0..1751. Keep questions there. The side and bottom UI margins are cropped out of the uploaded screenshot; the top edge is included.
+- Portrait orientation at normal zoom, and short answers only. Light gray full-width horizontal rules and thin vertical margin lines (including those partly hidden by plots) are filtered out when locating handwriting. Dark or complex templates may still be treated as ink.
+- The notebook toolbar is hidden while the page is read, so the whole 1620 × 2160 screen is the working area, except the Claude button at the right edge (and the Send button beside it), which is left out of the photo. Answers are 1174 px wide (about 13 cm), centred.
 - Native image insertion may extend the notebook page below the viewport. Scroll down to follow it; there is no automatic scrolling or new-page creation. The visible question still needs to be inside the capture area. Answers have a fixed image-size limit, independent of remaining screen space.
 - Visible page content supplies conversation context; there is no separate persistent conversation history.
 - Page identity and a second screenshot are checked before insertion. Keep the page still until completion. Native image insertion is asynchronous; cancellation cannot retract an insertion already handed to the notebook app.
@@ -108,28 +108,24 @@ Only tapping Claude starts a request. The cropped visible notebook image goes to
 
 ## Build and test
 
-**Paper Pro (in progress):** GitHub Actions builds the Paper Pro version with the official 3.29.1.0 SDK on every pull request (`.github/workflows/paper-pro-build.yml`), or locally with `./build.sh ferrari`. That build is not installable yet. See [docs/paper-pro/BUILD.md](docs/paper-pro/BUILD.md).
-
-**reMarkable 2** (`./build.sh rm2`):
-
-Build with the official rM2 SDK matching the tablet's OS version, listed at https://developer.remarkable.com/links . The checked-in binary uses 3.28.0.172:
-https://storage.googleapis.com/remarkable-codex-toolchain/3.28.0.172/remarkable-production-image-5.8.203-rm2-public-aarch64-toolchain.sh (an x86_64 variant is also published).
-
-The SDK runs on Linux. On a Mac, use a Linux VM (for example Lima, `limactl start template:ubuntu-lts`), and build from a copy on the VM's own disk: macOS filesystems are case-insensitive, and the repo's `VERSION` file then shadows the C++ `<version>` header.
+**Paper Pro:** GitHub Actions builds the plugin and the Stage 1 test with the official 3.29.1.0 SDK on every pull request (`.github/workflows/paper-pro-build.yml`). Locally, with that SDK and a checkout of xovi:
 
 ```sh
-export SDK_ENV=/absolute/path/to/sdk/environment-setup-cortexa7hf-neon-remarkable-linux-gnueabi
+export SDK_ENV=/absolute/path/to/sdk/environment-setup-cortexa53-crypto-remarkable-linux
 export XOVI_REPO=/absolute/path/to/xovi
-./build.sh rm2
+./build.sh ferrari                       # or ferrari-stage1
+tools/paper-pro/package.sh ferrari       # the folder to copy to the tablet
 ```
 
-Output: `bin/ink-diary.so` (ARMv7). Host checks require a C++ compiler and Qt6 Core/Gui development packages:
+The SDK runs on Linux. On a Mac, use a Linux VM (for example Lima, `limactl start template:ubuntu-lts`), and build from a copy on the VM's own disk: macOS filesystems are case-insensitive, and the repo's `VERSION` file then shadows the C++ `<version>` header. See [docs/paper-pro/BUILD.md](docs/paper-pro/BUILD.md).
+
+Output: `bin/ferrari/ink-diary.so` (64-bit ARM). Host checks require a C++ compiler and Qt6 Core/Gui/Qml/Quick development packages:
 
 ```sh
 ./test.sh
 ```
 
-The checks cover placement boundaries, Messages API JSON handling (refusal, max_tokens, fallback, web search citations, search errors, pause_turn), and actual font rendering. They do not test live network requests or physical pen injection.
+The checks cover the Paper Pro layout, the button's position and toolbar hiding in a stand-in notebook screen, placement boundaries, Messages API JSON handling (refusal, max_tokens, fallback, web search citations, search errors, pause_turn), and actual font rendering. They do not test live network requests or physical pen injection.
 
 Upstream provenance and licenses: THIRD_PARTY.md. API documentation: https://platform.claude.com/docs
 
