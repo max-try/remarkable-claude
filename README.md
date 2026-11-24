@@ -108,6 +108,10 @@ Only tapping Claude starts a request. The cropped visible notebook image goes to
 
 ## Build and test
 
+**Paper Pro (in progress):** GitHub Actions builds the Paper Pro version with the official 3.29.1.0 SDK on every pull request (`.github/workflows/paper-pro-build.yml`), or locally with `./build.sh ferrari`. That build is not installable yet. See [docs/paper-pro/BUILD.md](docs/paper-pro/BUILD.md).
+
+**reMarkable 2** (`./build.sh rm2`):
+
 Build with the official rM2 SDK matching the tablet's OS version, listed at https://developer.remarkable.com/links . The checked-in binary uses 3.28.0.172:
 https://storage.googleapis.com/remarkable-codex-toolchain/3.28.0.172/remarkable-production-image-5.8.203-rm2-public-aarch64-toolchain.sh (an x86_64 variant is also published).
 
@@ -116,7 +120,7 @@ The SDK runs on Linux. On a Mac, use a Linux VM (for example Lima, `limactl star
 ```sh
 export SDK_ENV=/absolute/path/to/sdk/environment-setup-cortexa7hf-neon-remarkable-linux-gnueabi
 export XOVI_REPO=/absolute/path/to/xovi
-./build.sh
+./build.sh rm2
 ```
 
 Output: `bin/ink-diary.so` (ARMv7). Host checks require a C++ compiler and Qt6 Core/Gui development packages:

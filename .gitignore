@@ -30,3 +30,6 @@ captures/
 # The instruction notebook is built from docs/notebook/build.py
 docs/notebook/claude-notebook.pdf
 docs/notebook/.notebook.html
+
+# Paper Pro builds come from CI (see docs/paper-pro/BUILD.md)
+/bin/ferrari/
