@@ -1,9 +1,11 @@
 # Builds the plugin for the reMarkable Paper Pro ("ferrari", 64-bit ARM) with
 # reMarkable's official SDK for software 3.29.1.0, on GitHub's free runners.
 #
-# The result is a download on the run's page. It is NOT ready to install yet:
-# the code still has reMarkable 2 screen sizes and button placement, which the
-# next stages of the port replace. See docs/paper-pro/BUILD.md.
+# Two downloads appear on each run's page (see docs/paper-pro/BUILD.md):
+#   ink-diary-stage1-test   the Stage 1 test: button + two screenshots, no Claude
+#                           requests (docs/paper-pro/STAGE1.md)
+#   ink-diary-paper-pro     the full plugin; untested on a tablet until Stage 2
+# Each is a folder to copy to the tablet as it is; install.sh checks its SHA256SUMS.
 name: Paper Pro build
 
 on:
@@ -66,38 +68,75 @@ jobs:
           git -C "$RUNNER_TEMP/xovi" checkout -q FETCH_HEAD
           echo "XOVI_REPO=$RUNNER_TEMP/xovi" >> "$GITHUB_ENV"
 
-      - name: Build
+      - name: Build the full plugin
         run: ./build.sh ferrari
 
-      - name: Describe the build
+      - name: Build the Stage 1 test
+        run: ./build.sh ferrari-stage1
+
+      - name: Describe and package the builds
         run: |
-          file bin/ferrari/ink-diary.so bin/ferrari/config-model
           set +u; source "$SDK_ENV"; set -u
           qt=$(pkg-config --modversion Qt6Core)
-          {
-            echo "Ink Diary for Claude, Paper Pro test build. DO NOT INSTALL YET."
-            echo
-            echo "tablet software: $RM_SOFTWARE (ferrari, aarch64)"
-            echo "Qt:              $qt"
-            echo "commit:          $GITHUB_SHA"
-            echo "sdk sha256:      $SDK_SHA256"
-            echo "xovi commit:     $XOVI_COMMIT"
-            echo
-            (cd bin/ferrari && sha256sum ink-diary.so config-model)
-          } | tee bin/ferrari/BUILD-INFO.txt
-          {
-            echo "### Paper Pro build ($RM_SOFTWARE, Qt $qt)"
-            echo
-            echo '```'
-            (cd bin/ferrari && sha256sum ink-diary.so config-model)
-            echo '```'
-            echo "Not installable yet: the screen sizes and button placement are still the reMarkable 2's."
-          } >> "$GITHUB_STEP_SUMMARY"
+          echo "### Paper Pro builds ($RM_SOFTWARE, Qt $qt)" >> "$GITHUB_STEP_SUMMARY"
+          for target in ferrari-stage1 ferrari; do
+            file "bin/$target/ink-diary.so" "bin/$target/config-model"
+            {
+              if [ "$target" = ferrari-stage1 ]; then
+                echo "Ink Diary for Claude, Paper Pro STAGE 1 TEST build: button and screenshots only."
+              else
+                echo "Ink Diary for Claude, Paper Pro full build. Untested on a tablet until Stage 2."
+              fi
+              echo
+              echo "tablet software: $RM_SOFTWARE (ferrari, aarch64)"
+              echo "Qt:              $qt"
+              echo "commit:          $GITHUB_SHA"
+              echo "sdk sha256:      $SDK_SHA256"
+              echo "xovi commit:     $XOVI_COMMIT"
+              echo
+              (cd "bin/$target" && sha256sum ink-diary.so config-model)
+            } | tee "bin/$target/BUILD-INFO.txt"
+            tools/paper-pro/package.sh "$target"
+            {
+              echo
+              echo "**$target**"
+              echo '```'
+              (cd "bin/$target" && sha256sum ink-diary.so config-model)
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          done
 
-      - name: Upload the build
+      - name: Upload the Stage 1 test
         uses: actions/upload-artifact@v4
         with:
-          name: ink-diary-paper-pro-${{ env.RM_SOFTWARE }}-untested
-          path: bin/ferrari/
+          name: ink-diary-stage1-test
+          path: dist/ink-diary-stage1-test/
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 90
+
+      - name: Upload the full plugin
+        uses: actions/upload-artifact@v4
+        with:
+          name: ink-diary-paper-pro-untested
+          path: dist/ink-diary-paper-pro/
+          if-no-files-found: error
+          retention-days: 90
+
+  host-tests:
+    # The parts that don't need the tablet: layout, button position, toolbar hiding,
+    # answer rendering, placement maths and settings. Ubuntu's Qt is older than the
+    # tablet's, which is fine for these checks.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Qt
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q qt6-base-dev qt6-declarative-dev qt6-svg-dev \
+            qml6-module-qtquick qml6-module-qtqml-workerscript fonts-dejavu-core locales
+          sudo locale-gen en_US.UTF-8
+      - name: Run the tests
+        run: ./test.sh
+      - name: Check the name-map checker
+        run: python3 tests/check-hashtab.py

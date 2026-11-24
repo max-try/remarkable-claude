@@ -1,6 +1,6 @@
 # Your steps on the tablet (Windows)
 
-Nothing here installs anything yet. There are two steps: one you can do now, and one that comes later, once the helper tools are installed in Stage 1.
+Nothing here installs anything yet. Step 1 only reads facts off the tablet; Stage 1 comes after it, with its own guide.
 
 You'll need the Paper Pro, its USB-C cable, and your Windows 10 or 11 computer. You type the commands into **PowerShell**, a text window that comes with Windows:
 
@@ -36,29 +36,6 @@ This only reads a few facts off the tablet. It doesn't change anything.
 
 **If step 3 says `ssh` is not recognized:** your Windows is missing its built-in SSH. Tell me and I'll walk you through switching it on (it's a free Windows feature, a few clicks in Settings).
 
-## Step 2 (later, in Stage 1): make the notebook app's name map
+## Step 2 (later): Stage 1
 
-Don't do this yet. It only works after the helper tools (xovi) are installed, which is the first part of Stage 1. I'll tell you when.
-
-**What it is:** the Claude button is added by a small patch to the notebook app. The patch finds its place by the app's internal names, and those can change between software versions. This step makes a list of the names in your exact version (3.29.1.0), so I can check the patch fits.
-
-1. Connect to the tablet as in Step 1 (steps 1 to 3).
-2. Type this and press Enter:
-
-   ```
-   bash /home/root/xovi/rebuild_hashtable
-   ```
-
-3. It stops the notebook app, and the tablet screen goes blank for a moment. That's expected. When it asks you to, press Enter.
-4. The notebook app starts on its own. If the tablet asks for its passcode, enter it on the tablet.
-5. Wait until PowerShell prints `Hashtable rebuilt`. This usually takes under a minute. Then type `exit` and press Enter.
-6. You're now back on your own computer, in the same PowerShell window. Paste this and press Enter. It copies the list into your **Downloads** folder:
-
-   ```
-   scp root@10.11.99.1:/home/root/xovi/exthome/qt-resource-rebuilder/hashtab "$HOME\Downloads\hashtab-ferrari-3.29.1.0"
-   ```
-
-   Type the tablet's password again when asked.
-7. Open File Explorer (the folder icon on the taskbar), click **Downloads**, and attach the file `hashtab-ferrari-3.29.1.0` to our chat.
-
-**If something looks wrong:** hold the power button and restart the tablet. Everything comes back as normal, because nothing here starts automatically.
+The rest happens in Stage 1, which has its own step-by-step guide: [STAGE1.md](STAGE1.md). It covers installing the helper tools, making the notebook app's name map, and trying the test button, with backup and undo steps.

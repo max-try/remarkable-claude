@@ -1,5 +1,7 @@
 # Ink Diary for Claude — installation and configuration
 
+> **Paper Pro:** this guide is for the earlier reMarkable 2 version. For the Paper Pro, follow [docs/paper-pro/STAGE1.md](docs/paper-pro/STAGE1.md) for now; this guide is rewritten for the Paper Pro in Stage 3.
+
 This takes about 15 minutes. Steps 1–6 were run exactly as written on a reMarkable 2 with OS 3.28.0.172 on 2026-10-25.
 
 ## Requirements

@@ -1,25 +1,29 @@
 #!/usr/bin/env bash
 # Build the plugin with an official reMarkable SDK (toolkit).
 #
-#   ./build.sh            # Paper Pro ("ferrari"), the default target
-#   ./build.sh ferrari    # same
-#   ./build.sh rm2        # reMarkable 2 (legacy)
+#   ./build.sh                  # Paper Pro ("ferrari"), the full plugin
+#   ./build.sh ferrari          # same
+#   ./build.sh ferrari-stage1   # Paper Pro Stage 1 test: button + two screenshots,
+#                               # no Claude request and no insertion (INK_DIARY_STAGE1)
 #
 # Needs SDK_ENV (the SDK's environment-setup-* file, from the SDK that matches
 # the tablet's software version and target) and XOVI_REPO (a checkout of
 # https://github.com/asivery/xovi). CI does all of this in
 # .github/workflows/paper-pro-build.yml.
 #
-# Output: bin/<target>/ink-diary.so and bin/<target>/config-model. The legacy
-# rm2 target also refreshes bin/ink-diary.so and bin/config-model.
+# Output: bin/<target>/ink-diary.so and bin/<target>/config-model.
+# tools/paper-pro/package.sh then makes the folder that is copied to the tablet.
 set -euo pipefail
 cd -- "$(dirname -- "$0")"
 target=${1:-ferrari}
+defines=
 case "$target" in
-    ferrari) xovi_arch=aarch64 elf_class=2 elf_machine=183 ;;  # ELFCLASS64, EM_AARCH64
-    rm2)     xovi_arch=arm32   elf_class=1 elf_machine=40  ;;  # ELFCLASS32, EM_ARM
-    *) echo 'Usage: ./build.sh [ferrari|rm2]' >&2; exit 2 ;;
+    ferrari)        ;;
+    ferrari-stage1) defines=INK_DIARY_STAGE1 ;;
+    *) echo 'Usage: ./build.sh [ferrari|ferrari-stage1]' >&2; exit 2 ;;
 esac
+# The Paper Pro is 64-bit ARM: ELFCLASS64, EM_AARCH64.
+xovi_arch=aarch64 elf_class=2 elf_machine=183
 : "${SDK_ENV:?Set SDK_ENV to the environment-setup file of the official SDK for this target and OS version}"
 : "${XOVI_REPO:?Set XOVI_REPO to the xovi source checkout}"
 SDK_ENV=$(realpath "$SDK_ENV")
@@ -34,7 +38,7 @@ set -u
 # Refuse an SDK for the wrong processor before spending time compiling.
 compiler_arch=$($CXX -dumpmachine)
 case "$target:$compiler_arch" in
-    ferrari:aarch64*|rm2:arm*) ;;
+    *:aarch64*) ;;
     *) echo "The SDK compiler ($compiler_arch) does not match target $target" >&2; exit 1 ;;
 esac
 
@@ -48,7 +52,7 @@ test -s xovi.cpp && test -s xovi.h
 
 (
     cd "$build_dir"
-    qmake "$repo/ink-diary.pro" CONFIG+=release
+    qmake "$repo/ink-diary.pro" CONFIG+=release ${defines:+DEFINES+=$defines}
     make -j"${JOBS:-4}"
 )
 cp "$build_dir/ink-diary.so" "$out_dir/ink-diary.so"
@@ -67,10 +71,6 @@ if len(h) < 20 or h[:4] != b'\x7fELF' or h[4] != cls or int.from_bytes(h[18:20],
     sys.exit(f'{path} was not built for the expected processor')
 PY
 done
-
-if [ "$target" = rm2 ]; then
-    cp "$out_dir/ink-diary.so" "$out_dir/config-model" bin/
-fi
 
 qt=$(pkg-config --modversion Qt6Core)
 printf 'Built %s (%s, Qt %s) in bin/%s\n' "$target" "$compiler_arch" "$qt" "$target"

@@ -32,4 +32,6 @@ docs/notebook/claude-notebook.pdf
 docs/notebook/.notebook.html
 
 # Paper Pro builds come from CI (see docs/paper-pro/BUILD.md)
-/bin/ferrari/
+/bin/ferrari*/
+/dist/
+__pycache__/

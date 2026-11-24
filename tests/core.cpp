@@ -11,30 +11,40 @@
 #include "../src/letterpaths.h"
 int main(int argc,char **argv) {
     QGuiApplication app(argc,argv);
-    // Top handwriting used to be dropped by the old y=170 crop. Verify the
-    // exact production crop, including its unchanged bottom/right boundaries.
+    // Paper Pro portrait: the whole 1620 x 2160 screen is read (the toolbar is hidden
+    // while reading), except our own buttons, which are masked white.
+    assert(diaryScreenSize()==QSize(1620,2160));
     const QRect captureArea=diaryCaptureArea();
-    assert(captureArea==QRect(150,0,1174,1752));
-    // The Claude button sits under the toolbar's close button; it is masked out of every capture.
-    assert(diaryButtonRect()==QRect(1292,112,112,112));
-    {QImage withButton(1404,1872,QImage::Format_RGB32);withButton.fill(Qt::white);
-     {QPainter p(&withButton);p.fillRect(diaryButtonRect().adjusted(40,40,-40,-40),Qt::black);}
+    assert(captureArea==QRect(0,0,1620,2160));
+    // Answers keep the rM2's 1174 px width (same pixel density) and sit centred.
+    assert(diaryAnswerWidth()==1174 && diaryAnswerCenterX()==810);
+    assert(diaryAnswerCenterX()-diaryAnswerWidth()/2>=0 && diaryAnswerCenterX()+diaryAnswerWidth()/2<=1620);
+    // Button masks match inkDiary.qmd: 72 x 72 button at x=1524, y=1928 (right 24, bottom 160),
+    // Send 120 x 72 16 px to its left, each with a 12 px margin, all on screen.
+    assert(diaryButtonRect()==QRect(1524-12,1928-12,72+24,72+24));
+    assert(diarySendButtonRect()==QRect(1524-16-120-12,1928-12,120+24,72+24));
+    assert(captureArea.contains(diaryButtonRect()) && captureArea.contains(diarySendButtonRect()));
+    {QImage withButton(1620,2160,QImage::Format_RGB32);withButton.fill(Qt::white);
+     {QPainter p(&withButton);p.fillRect(QRect(1524,1928,72,72),Qt::black);p.fillRect(QRect(1388,1928,120,72),Qt::black);}
      diaryMaskControls(withButton);assert(lastInkRow(withButton.copy(captureArea))==-1);
-     assert(withButton.pixelColor(1348,168)==QColor(Qt::white));
-     // The Send button (shown while drafts are pending) sits left of it and is masked too.
-     assert(diarySendButtonRect()==QRect(1180,112,124,112));
-     {QPainter p(&withButton);p.fillRect(diarySendButtonRect().adjusted(20,30,-20,-30),Qt::black);}
-     diaryMaskControls(withButton);assert(withButton.pixelColor(1240,168)==QColor(Qt::white));assert(lastInkRow(withButton.copy(captureArea))==-1);}
-    QImage screen(1404,1872,QImage::Format_RGB32);screen.fill(Qt::white);
+     assert(withButton.pixelColor(1560,1964)==QColor(Qt::white));
+     assert(withButton.pixelColor(1440,1964)==QColor(Qt::white));}
+    QImage screen(1620,2160,QImage::Format_RGB32);screen.fill(Qt::white);
     screen.setPixelColor(500,0,Qt::black);
     screen.setPixelColor(500,90,Qt::black);
     auto captured=screen.copy(captureArea);
-    assert(captured.pixelColor(350,0)==Qt::black);
-    assert(captured.pixelColor(350,90)==Qt::black);
+    assert(captured.pixelColor(500,0)==Qt::black);
     assert(lastInkRow(captured)+captureArea.y()==90);
-    screen.setPixelColor(500,1700,Qt::black);
-    screen.setPixelColor(1350,1830,Qt::black); // Bottom-right button is excluded.
-    assert(lastInkRow(screen.copy(captureArea))+captureArea.y()==1700);
+    screen.setPixelColor(500,2000,Qt::black);
+    screen.setPixelColor(1560,1964,Qt::black); // Inside the Claude button: masked.
+    diaryMaskControls(screen);
+    assert(lastInkRow(screen.copy(captureArea))+captureArea.y()==2000);
+    // Scene scaling: unchanged at 1, resized otherwise, refused for a broken mapping.
+    {QImage answer(1174,400,QImage::Format_RGB32);answer.fill(Qt::white);
+     assert(diaryScaleForScene(answer,1.0).size()==answer.size());
+     assert(diaryScaleForScene(answer,0.86).size()==QSize(1010,344));
+     assert(diaryScaleForScene(answer,2.0).size()==QSize(2348,800));
+     assert(diaryScaleForScene(answer,-1).isNull() && diaryScaleForScene(answer,0).isNull() && diaryScaleForScene(answer,10).isNull());}
     QImage page(1174,1582,QImage::Format_RGB32); page.fill(Qt::white);
     assert(lastInkRow(page)==-1);
     page.setPixelColor(500,420,Qt::black); assert(lastInkRow(page)==420);
