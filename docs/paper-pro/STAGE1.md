@@ -137,7 +137,7 @@ It lists the files as it copies them.
 2. Paste this and press Enter (type the password when asked):
 
    ```
-   scp -r root@10.11.99.1:/home/root/ink-diary-stage1 "$HOME\Downloads\"
+   scp -r root@10.11.99.1:/home/root/ink-diary-stage1 "$HOME\Downloads"
    ```
 
 3. Open **Downloads** → **ink-diary-stage1**. Attach all three files to our chat: `1-as-you-see-it.png`, `2-toolbar-hidden.png` and `report.json`.
@@ -170,5 +170,6 @@ Vellum and xovi stay in the tablet's home folder, doing nothing until you run `x
 
 - **The toolbar didn't come back.** Close the notebook and open it again. If it's still missing, restart the tablet. Tell me either way: it's exactly what this test is for.
 - **The message says `Test: …`** followed by an error. Copy the words and send them to me.
+- **`scp` says "Connection closed", "subsystem request failed" or "sftp-server: not found".** Newer Windows versions copy files in a way the tablet may not support. Run the same `scp` line again with ` -O` (a space, a dash, capital O) right after `scp`, for example `scp -O -r "$HOME\Downloads\ink-diary-stage1-test" root@10.11.99.1:/home/root/`.
 - **`ssh` or `scp` says "timed out" or "unreachable".** Unplug and replug the cable, wake the tablet, wait 10 seconds and try again.
 - **`ssh` is "not recognized".** Your Windows is missing its built-in SSH. Tell me and I'll walk you through switching it on.

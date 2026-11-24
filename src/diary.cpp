@@ -232,6 +232,9 @@ QJsonObject stage1Facts() {
         facts["nativeImageInsert"]=insert;
         facts["screenMapping"]=findImageView(page.controller)!=nullptr;
         facts["sceneUnitsPerPixel"]=screenToSceneScale(QPointF(diaryAnswerCenterX(),diaryScreenSize().height()/2));
+        // Where two screen points land on the page: shows whether hiding the toolbar moves the page.
+        facts["sceneAtTopLeft"]=screenToScenePoint(QPointF(0,0));
+        facts["sceneAtCentre"]=screenToScenePoint(QPointF(diaryAnswerCenterX(),diaryScreenSize().height()/2));
         facts["pageGeometry"]=nativePageGeometry(page.controller);
     }
     return facts;
@@ -239,38 +242,57 @@ QJsonObject stage1Facts() {
 // Stage 1 test build: takes two screenshots (as you see the page, then with the toolbar
 // hidden) and writes what it measured. No Claude request, no insertion, no settings.
 void stage1Test() {
+    const QString dir="/home/root/ink-diary-stage1";
+    QJsonObject report{{"build","stage1-test"},{"qtRuntime",QString::fromLatin1(qVersion())},
+                       {"qtBuilt",QStringLiteral(QT_VERSION_STR)},
+                       {"time",QDateTime::currentDateTime().toString(Qt::ISODate)}};
+    // The report is written even when a step fails: what was measured up to then, and
+    // the error, are what tell us which backup plan applies.
+    auto saveReport=[&] {
+        QSaveFile out(dir+"/report.json");
+        if(!out.open(QIODevice::WriteOnly)) return false;
+        out.write(QJsonDocument(report).toJson());
+        return out.commit();
+    };
     try {
-        const QString dir="/home/root/ink-diary-stage1";
         require(QDir().mkpath(dir), "Cannot create /home/root/ink-diary-stage1");
-        QJsonObject report{{"build","stage1-test"},{"qtRuntime",QString::fromLatin1(qVersion())},
-                           {"qtBuilt",QStringLiteral(QT_VERSION_STR)},
-                           {"time",QDateTime::currentDateTime().toString(Qt::ISODate)}};
+        // Leftovers from an earlier run must not pass for this run's photos.
+        for(const char *name:{"/1-as-you-see-it.png","/2-toolbar-hidden.png","/report.json"}) QFile::remove(dir+name);
         state("Test: photo 1 of 2...");
         QThread::msleep(1500);
+        report["step"]="photo 1";
         runOnGuiSync([&] {report["before"]=stage1Facts();});
         const QImage shown=capture(dir+"/1-as-you-see-it.png",false);
         report["screenshot1"]=QJsonArray{shown.width(),shown.height()};
         {
             ToolbarHidden toolbar;
+            report["step"]="hide toolbar";
             const QString hidden=toolbar.hide();
             report["hideToolbar"]=hidden.isEmpty() ? QStringLiteral("ok") : hidden;
             state("Test: photo 2 of 2...");
             QThread::msleep(1500);
+            report["step"]="photo 2";
             runOnGuiSync([&] {report["toolbarHidden"]=stage1Facts();});
             const QImage bare=capture(dir+"/2-toolbar-hidden.png",false);
             report["screenshot2"]=QJsonArray{bare.width(),bare.height()};
             QImage masked=bare;diaryMaskControls(masked);
             report["lastInkRow"]=lastInkRow(masked.copy(diaryCaptureArea()));
+            report["step"]="restore toolbar";
         }
+        // Give the toolbar's own bindings a moment, then record that it came back.
+        QThread::msleep(500);
         runOnGuiSync([&] {report["after"]=stage1Facts();});
-        QSaveFile out(dir+"/report.json");
-        require(out.open(QIODevice::WriteOnly), "Cannot write the test report");
-        out.write(QJsonDocument(report).toJson());
-        require(out.commit(), "Cannot write the test report");
+        report["step"]="done";
+        require(saveReport(), "Cannot write the test report");
         const bool right=shown.size()==diaryScreenSize();
         state(QString("Test done: 2 photos, %1 x %2%3. Copy them to your computer.")
               .arg(shown.width()).arg(shown.height()).arg(right ? "" : " (unexpected size)"));
-    } catch(const std::exception &error) { fail(QString("Test: ")+QString::fromUtf8(error.what())); }
+    } catch(const std::exception &error) {
+        report["error"]=QString::fromUtf8(error.what());
+        runOnGuiSync([&] {report["afterError"]=stage1Facts();});
+        const bool saved=saveReport();
+        fail(QString("Test: ")+QString::fromUtf8(error.what())+(saved ? " (report saved)" : ""));
+    }
 }
 #endif
 
