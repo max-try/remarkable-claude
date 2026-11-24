@@ -31,8 +31,19 @@ if [ -f SHA256SUMS ] && ! sha256sum -c SHA256SUMS > /dev/null 2>&1; then
     exit 1
 fi
 
-[ -x /home/root/.vellum/bin/vellum ] || { echo 'Install Vellum first (guide, part 2)'; exit 1; }
-/home/root/.vellum/bin/vellum add xovi qt-resource-rebuilder xovi-message-broker framebuffer-spy 'rm-shot>=1.2.0'
+# The helper tools (guide, part 2). Only ask Vellum when one is missing, so a reinstall
+# needs no internet and can't change versions under us.
+ext=/home/root/xovi/extensions.d
+missing=
+for f in /home/root/xovi/xovi.so /home/root/xovi/start "$ext/qt-resource-rebuilder.so" \
+         "$ext/xovi-message-broker.so" "$ext/framebuffer-spy.so" "$ext/rm-shot.so"; do
+    [ -f "$f" ] || missing="$missing $f"
+done
+if [ -n "$missing" ]; then
+    [ -x /home/root/.vellum/bin/vellum ] || { echo 'Install Vellum first (guide, part 2)'; exit 1; }
+    echo "Installing missing helper tools:$missing"
+    /home/root/.vellum/bin/vellum add xovi qt-resource-rebuilder xovi-message-broker framebuffer-spy 'rm-shot>=1.2.0'
+fi
 
 if [ ! -s /home/root/xovi/exthome/qt-resource-rebuilder/hashtab ]; then
     echo 'The name map is missing. Run this first, then install again:'

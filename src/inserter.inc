@@ -25,6 +25,7 @@
 #include <QQmlApplicationEngine>
 #include <QQmlComponent>
 #include <QQmlEngine>
+#include <QJSValue>
 #include <QQmlError>
 #include <QtQml/qqml.h>
 #include <QtGlobal>
@@ -175,6 +176,17 @@ QtObject {
             return "ok"
         } catch (exception) {
             return "exception:" + exception
+        }
+    }
+
+    // The scene point under a screen point, as [x, y], or null.
+    function screenPoint(x, y) {
+        if (!nativeImageView) return null
+        try {
+            const p = nativeImageView.viewToScene(nativeImageView.mapFromItem(null, x, y))
+            return p && isFinite(p.x) && isFinite(p.y) ? [p.x, p.y] : null
+        } catch (exception) {
+            return null
         }
     }
 
@@ -530,6 +542,24 @@ QObject *findImageView(QObject *controller)
     return nullptr;
 }
 
+// The page (scene) point under a screen point, or an empty array. GUI thread only.
+QJsonArray screenToScenePoint(const QPointF &at)
+{
+    const ActivePageContext context = findActivePage();
+    QObject *imageView = context.controller ? findImageView(context.controller) : nullptr;
+    QObject *helper = imageView ? ensureHelper(nullptr) : nullptr;
+    if (!helper) return {};
+    helper->setProperty("nativeImageView", QVariant::fromValue(imageView));
+    QVariant result;
+    if (!QMetaObject::invokeMethod(helper, "screenPoint", Q_RETURN_ARG(QVariant, result),
+                                   Q_ARG(QVariant, QVariant(at.x())), Q_ARG(QVariant, QVariant(at.y()))))
+        return {};
+    // A JS array may come back as a QJSValue rather than a list, depending on the Qt version.
+    if (result.metaType() == QMetaType::fromType<QJSValue>())
+        result = result.value<QJSValue>().toVariant();
+    return QJsonArray::fromVariantList(result.toList());
+}
+
 // Scene units per screen pixel at a screen point, or -1 if the page can't be mapped.
 // Must run on the GUI thread.
 double screenToSceneScale(const QPointF &at)
@@ -545,6 +575,8 @@ double screenToSceneScale(const QPointF &at)
     if (!QMetaObject::invokeMethod(helper, "screenScale", Q_RETURN_ARG(QVariant, result),
                                    Q_ARG(QVariant, QVariant(at.x())), Q_ARG(QVariant, QVariant(at.y()))))
         return -1;
+    if (result.metaType() == QMetaType::fromType<QJSValue>())
+        result = result.value<QJSValue>().toVariant();
     bool ok = false;
     const double scale = result.toDouble(&ok);
     return ok ? scale : -1;
