@@ -57,14 +57,14 @@ It can only be built after xovi and qt-resource-rebuilder are installed (Stage 1
 bash /home/root/xovi/rebuild_hashtable
 ```
 
-It writes `/home/root/xovi/exthome/qt-resource-rebuilder/hashtab`. Copy it to a computer with:
+It writes `/home/root/xovi/exthome/qt-resource-rebuilder/hashtab`. Copy it to a computer with (Windows PowerShell; on macOS/Linux use `~/Downloads/...`):
 
-```sh
-scp root@10.11.99.1:/home/root/xovi/exthome/qt-resource-rebuilder/hashtab ~/Desktop/hashtab-ferrari-3.29.1.0
+```powershell
+scp root@10.11.99.1:/home/root/xovi/exthome/qt-resource-rebuilder/hashtab "$HOME\Downloads\hashtab-ferrari-3.29.1.0"
 ```
 
 The hashtab is derived from reMarkable's own software, so it stays out of this repository (the Paper Pro port this borrows from keeps it private too).
 
 ## Read-only device check
 
-`tools/paper-pro/device-info.sh` prints the facts the build depends on (model, processor, software version, Qt library, whether xovi is installed, the notebook app's checksum). It reads files only and changes nothing. The plain-language steps are in [YOUR-STEPS.md](YOUR-STEPS.md).
+`tools/paper-pro/device-info.sh` prints the facts the build depends on (model, processor, software version, Qt library, whether xovi is installed, the notebook app's checksum). It reads files only and changes nothing. The plain-language steps, written for Windows (Gilad's computer), are in [YOUR-STEPS.md](YOUR-STEPS.md).
