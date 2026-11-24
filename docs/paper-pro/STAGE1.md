@@ -85,7 +85,8 @@ The button patch finds its place in the notebook app by internal names, which ca
 
 ## Part 4: Get the test build (on your computer)
 
-1. Download `ink-diary-stage1-test.zip` from the link I send you in the chat.
+1. Open the GitHub link I send you in the chat (a page called **Paper Pro build**; sign in to GitHub if asked). Scroll down to **Artifacts** and click **ink-diary-stage1-test**. Your browser saves `ink-diary-stage1-test.zip` in **Downloads**.
+   - To find it yourself: go to github.com/max-try/remarkable-claude, click **Actions**, then **Paper Pro build** on the left, then the newest run with a green tick.
 2. Open **Downloads** in File Explorer, right-click `ink-diary-stage1-test.zip`, choose **Extract All…**, and click **Extract**.
 3. A folder called `ink-diary-stage1-test` opens. Check that you see `install.sh` and a folder called `bin` directly inside it. (If you see only another `ink-diary-stage1-test` folder, use that inner one in the next step and tell me.)
 
