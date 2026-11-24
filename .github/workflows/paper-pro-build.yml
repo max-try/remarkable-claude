@@ -1,0 +1,103 @@
+# Builds the plugin for the reMarkable Paper Pro ("ferrari", 64-bit ARM) with
+# reMarkable's official SDK for software 3.29.1.0, on GitHub's free runners.
+#
+# The result is a download on the run's page. It is NOT ready to install yet:
+# the code still has reMarkable 2 screen sizes and button placement, which the
+# next stages of the port replace. See docs/paper-pro/BUILD.md.
+name: Paper Pro build
+
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: paper-pro-build-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # From https://developer.remarkable.com/links (software 3.29.1.0, ferrari,
+  # x86_64 host). The checksum was taken from the downloaded file; Google
+  # Storage's own MD5 for it (y9aKNrbQC0RbOmMGXZbwtQ==) matched.
+  RM_SOFTWARE: 3.29.1.0
+  SDK_URL: https://storage.googleapis.com/remarkable-codex-toolchain/3.29.1.0/remarkable-production-image-6.0.112-ferrari-public-x86_64-toolchain.sh
+  SDK_SHA256: e517362f102f77e0b140c0ed53a74bea8a3e6fe4048199ea44df7d9af2683ebb
+  # asivery/xovi, pinned so a change upstream can't silently change the build.
+  XOVI_COMMIT: 2b99649f5e4fd6288be7792a8570bd16418adb70
+
+jobs:
+  ferrari:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore the SDK download
+        id: sdk-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/sdk-download
+          key: rm-sdk-${{ env.SDK_SHA256 }}
+
+      - name: Download the SDK
+        if: steps.sdk-cache.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p ~/sdk-download
+          curl --fail --location --retry 3 --silent --show-error \
+            "$SDK_URL" --output ~/sdk-download/sdk.sh
+
+      - name: Check and install the SDK
+        run: |
+          echo "$SDK_SHA256  $HOME/sdk-download/sdk.sh" | sha256sum --check
+          sh ~/sdk-download/sdk.sh -y -d "$RUNNER_TEMP/sdk" > "$RUNNER_TEMP/sdk-install.log"
+          env_file=$(find "$RUNNER_TEMP/sdk" -maxdepth 1 -name 'environment-setup-*' -type f -print -quit)
+          test -n "$env_file"
+          echo "SDK_ENV=$env_file" >> "$GITHUB_ENV"
+          echo "SDK environment: $env_file"
+
+      - name: Fetch xovi
+        run: |
+          git init -q "$RUNNER_TEMP/xovi"
+          git -C "$RUNNER_TEMP/xovi" fetch -q --depth 1 https://github.com/asivery/xovi "$XOVI_COMMIT"
+          git -C "$RUNNER_TEMP/xovi" checkout -q FETCH_HEAD
+          echo "XOVI_REPO=$RUNNER_TEMP/xovi" >> "$GITHUB_ENV"
+
+      - name: Build
+        run: ./build.sh ferrari
+
+      - name: Describe the build
+        run: |
+          file bin/ferrari/ink-diary.so bin/ferrari/config-model
+          set +u; source "$SDK_ENV"; set -u
+          qt=$(pkg-config --modversion Qt6Core)
+          {
+            echo "Ink Diary for Claude, Paper Pro test build. DO NOT INSTALL YET."
+            echo
+            echo "tablet software: $RM_SOFTWARE (ferrari, aarch64)"
+            echo "Qt:              $qt"
+            echo "commit:          $GITHUB_SHA"
+            echo "sdk sha256:      $SDK_SHA256"
+            echo "xovi commit:     $XOVI_COMMIT"
+            echo
+            (cd bin/ferrari && sha256sum ink-diary.so config-model)
+          } | tee bin/ferrari/BUILD-INFO.txt
+          {
+            echo "### Paper Pro build ($RM_SOFTWARE, Qt $qt)"
+            echo
+            echo '```'
+            (cd bin/ferrari && sha256sum ink-diary.so config-model)
+            echo '```'
+            echo "Not installable yet: the screen sizes and button placement are still the reMarkable 2's."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the build
+        uses: actions/upload-artifact@v4
+        with:
+          name: ink-diary-paper-pro-${{ env.RM_SOFTWARE }}-untested
+          path: bin/ferrari/
+          if-no-files-found: error
+          retention-days: 30
