@@ -1,4 +1,4 @@
-// Ink Diary prototype. GPL-3.0-only. See THIRD_PARTY.md.
+// Ink Diary for Claude, reMarkable Paper Pro. GPL-3.0-only. See THIRD_PARTY.md.
 #include <atomic>
 #include <thread>
 #include <stdexcept>
@@ -18,6 +18,7 @@
 #include <QFileInfo>
 #include <functional>
 #include <QVersionNumber>
+#include <QDateTime>
 #include "inserter.inc"
 #include "layout.h"
 #include "response.h"
@@ -127,7 +128,47 @@ QString handleEmail(const DiaryAnswer &a,const QJsonObject &config,std::function
     return md;
 }
 
-QImage capture(const QString &path) {
+void requireText(bool valid, const QString &why) { if (!valid) throw std::runtime_error(why.toStdString()); }
+
+// Our button (inkDiary.qmd) on the open notebook. GUI thread only.
+QQuickItem *diaryControl() {
+    for(QObject *object:runtimeObjects()) {
+        auto *item=qobject_cast<QQuickItem *>(object);
+        if(item && item->objectName()=="inkDiaryControl" && item->isVisible()) return item;
+    }
+    return nullptr;
+}
+
+// Hides the notebook toolbar (and zoom control) while a request reads the page, through
+// the Bindings in inkDiary.qmd. The toolbar comes back when this goes out of scope,
+// including on errors and cancel; the QML also restores it if the notebook closes.
+class ToolbarHidden {
+public:
+    ToolbarHidden()=default;
+    ToolbarHidden(const ToolbarHidden &)=delete;
+    ToolbarHidden &operator=(const ToolbarHidden &)=delete;
+    // Empty when the toolbar is hidden, otherwise why it isn't.
+    QString hide() {
+        QString why;
+        runOnGuiSync([&] {
+            control=diaryControl();
+            if(!control) {why="Claude button not found on this page";return;}
+            if(!control->property("diaryToolbarFound").toBool()) {why="Can't find the notebook toolbar on this software version";return;}
+            control->setProperty("diaryHideToolbar",true);
+            held=true;
+            if(!control->property("diaryToolbarHidden").toBool()) why="The notebook toolbar did not hide";
+        });
+        return why;
+    }
+    ~ToolbarHidden() {
+        if(held) runOnGuiSync([&] {if(control) control->setProperty("diaryHideToolbar",false);});
+    }
+private:
+    QPointer<QQuickItem> control;
+    bool held=false;
+};
+
+QImage capture(const QString &path, bool mask=true) {
     QFile::remove(path);
     QByteArray arg = (path + ",0,0").toUtf8();
     char *result = rm_shot$screenshotHandler(arg.data());
@@ -139,7 +180,7 @@ QImage capture(const QString &path) {
         require(diaryGuard(), "Cancelled or page changed");
         QThread::msleep(100);
         QImage image(path);
-        if (!image.isNull()) { diaryMaskControls(image); return image; }
+        if (!image.isNull()) { if (mask) diaryMaskControls(image); return image; }
     }
     throw std::runtime_error("Screenshot timed out");
 }
@@ -154,8 +195,93 @@ QString answer(const QImage &image, const QJsonObject &config, int /*lines*/) {
     return responseText(diaryApiRequest(payload,key,diaryGuard));
 }
 
+#ifdef INK_DIARY_STAGE1
+QJsonArray rectJson(const QRectF &r) {return QJsonArray{r.x(),r.y(),r.width(),r.height()};}
+// What the Stage 1 test measures about the notebook screen. GUI thread only. Reads only.
+QJsonObject stage1Facts() {
+    QJsonObject facts;
+    QQuickItem *control=diaryControl();
+    facts["buttonFound"]=control!=nullptr;
+    if(control) {
+        facts["buttonRect"]=rectJson(control->mapRectToScene(QRectF(0,0,control->width(),control->height())));
+        if(auto *parent=control->parentItem()) facts["buttonParentRect"]=rectJson(parent->mapRectToScene(QRectF(0,0,parent->width(),parent->height())));
+        if(auto *window=control->window()) {
+            facts["windowSize"]=QJsonArray{window->width(),window->height()};
+            facts["devicePixelRatio"]=window->devicePixelRatio();
+        }
+        facts["toolbarFound"]=control->property("diaryToolbarFound").toBool();
+        facts["toolbarHidden"]=control->property("diaryToolbarHidden").toBool();
+        facts["zoomButtonFound"]=control->property("diaryZoomButton").value<QObject *>()!=nullptr;
+        if(auto *bar=qobject_cast<QQuickItem *>(control->property("diaryToolbar").value<QObject *>())) {
+            facts["toolbarRect"]=rectJson(bar->mapRectToScene(QRectF(0,0,bar->width(),bar->height())));
+            facts["toolbarVisible"]=bar->isVisible();
+            for(const char *name:{"shown","expanded","position"}) {
+                const QVariant value=bar->property(name);
+                if(value.isValid()) facts[QString("toolbar_")+name]=QJsonValue::fromVariant(value);
+            }
+        }
+    }
+    const QSize canvas=activeCanvasSize();
+    facts["canvas"]=QJsonArray{canvas.width(),canvas.height()};
+    const auto page=findActivePage();
+    facts["pageFound"]=page.controller!=nullptr;
+    if(page.controller) {
+        bool insert=false;
+        for(int i=0;i<page.controller->metaObject()->methodCount();++i)
+            if(page.controller->metaObject()->method(i).name()=="insertImageFileAsSceneItem") insert=true;
+        facts["nativeImageInsert"]=insert;
+        facts["screenMapping"]=findImageView(page.controller)!=nullptr;
+        facts["sceneUnitsPerPixel"]=screenToSceneScale(QPointF(diaryAnswerCenterX(),diaryScreenSize().height()/2));
+        facts["pageGeometry"]=nativePageGeometry(page.controller);
+    }
+    return facts;
+}
+// Stage 1 test build: takes two screenshots (as you see the page, then with the toolbar
+// hidden) and writes what it measured. No Claude request, no insertion, no settings.
+void stage1Test() {
+    try {
+        const QString dir="/home/root/ink-diary-stage1";
+        require(QDir().mkpath(dir), "Cannot create /home/root/ink-diary-stage1");
+        QJsonObject report{{"build","stage1-test"},{"qtRuntime",QString::fromLatin1(qVersion())},
+                           {"qtBuilt",QStringLiteral(QT_VERSION_STR)},
+                           {"time",QDateTime::currentDateTime().toString(Qt::ISODate)}};
+        state("Test: photo 1 of 2...");
+        QThread::msleep(1500);
+        runOnGuiSync([&] {report["before"]=stage1Facts();});
+        const QImage shown=capture(dir+"/1-as-you-see-it.png",false);
+        report["screenshot1"]=QJsonArray{shown.width(),shown.height()};
+        {
+            ToolbarHidden toolbar;
+            const QString hidden=toolbar.hide();
+            report["hideToolbar"]=hidden.isEmpty() ? QStringLiteral("ok") : hidden;
+            state("Test: photo 2 of 2...");
+            QThread::msleep(1500);
+            runOnGuiSync([&] {report["toolbarHidden"]=stage1Facts();});
+            const QImage bare=capture(dir+"/2-toolbar-hidden.png",false);
+            report["screenshot2"]=QJsonArray{bare.width(),bare.height()};
+            QImage masked=bare;diaryMaskControls(masked);
+            report["lastInkRow"]=lastInkRow(masked.copy(diaryCaptureArea()));
+        }
+        runOnGuiSync([&] {report["after"]=stage1Facts();});
+        QSaveFile out(dir+"/report.json");
+        require(out.open(QIODevice::WriteOnly), "Cannot write the test report");
+        out.write(QJsonDocument(report).toJson());
+        require(out.commit(), "Cannot write the test report");
+        const bool right=shown.size()==diaryScreenSize();
+        state(QString("Test done: 2 photos, %1 x %2%3. Copy them to your computer.")
+              .arg(shown.width()).arg(shown.height()).arg(right ? "" : " (unexpected size)"));
+    } catch(const std::exception &error) { fail(QString("Test: ")+QString::fromUtf8(error.what())); }
+}
+#endif
+
 // sendMode: the Send button. Hand edits on printed drafts are applied and shown first; otherwise the drafts are sent.
 void work(bool sendMode) {
+#ifdef INK_DIARY_STAGE1
+    Q_UNUSED(sendMode);
+    stage1Test();
+    busy=false;
+    return;
+#endif
     try {
         QTemporaryDir temp("/tmp/ink-diary-XXXXXX");
         require(temp.isValid(), "Cannot create private temporary directory");
@@ -164,11 +290,16 @@ void work(bool sendMode) {
         QJsonObject config=QJsonDocument::fromJson(file.readAll()).object();
         require(!config.isEmpty(), "Invalid config.json");
         state("Reading page...");
-        // Let the button switch to its stable busy appearance before capture.
-        QThread::msleep(800);
+        ToolbarHidden toolbar;
+        const QString hidden=toolbar.hide();
+        requireText(hidden.isEmpty(), hidden);
+        // Let the e-ink screen redraw without the toolbar, and the button switch to
+        // its busy look, before the photo.
+        QThread::msleep(1500);
         auto screen=capture(temp.path()+"/question.png");
-        require(screen.width()==1404 && screen.height()==1872,
-                "First version requires rM2 portrait (1404 x 1872)");
+        requireText(screen.size()==diaryScreenSize(),
+                    QString("Hold the tablet upright (portrait). Expected a %1 x %2 screen, got %3 x %4")
+                        .arg(diaryScreenSize().width()).arg(diaryScreenSize().height()).arg(screen.width()).arg(screen.height()));
         QSize canvas;
         runOnGuiSync([&] {canvas=activeCanvasSize();});
         require(canvas==screen.size(), "Screen/input coordinates differ; refusing to draw");
@@ -179,7 +310,7 @@ void work(bool sendMode) {
         int top=area.y()+last+45;
         // Native scene images can extend below the current viewport. Render at
         // a fixed readable size, independent of empty space on screen.
-        int width=area.width(), available=1582;
+        int width=diaryAnswerWidth(), available=diaryAnswerMaxHeight();
         std::function<void()> afterInsert;QString emailDone;
         DiaryAnswer resultAnswer;
         if(sendMode) {
@@ -252,7 +383,12 @@ void work(bool sendMode) {
         require(QDir().mkpath(answerDir), "Cannot create answer image directory");
         QFile::setPermissions(answerDir,QFileDevice::ReadOwner|QFileDevice::WriteOwner|QFileDevice::ExeOwner);
         QString imagePath=answerDir+"/"+QUuid::createUuid().toString(QUuid::WithoutBraces)+".png";
-        require(ink.save(imagePath), "Cannot save answer image");
+        // Size the image in the page's own units so it shows at its drawn size.
+        double sceneScale=-1;
+        runOnGuiSync([&] {sceneScale=screenToSceneScale(QPointF(diaryAnswerCenterX(),top));});
+        const QImage placed=diaryScaleForScene(ink,sceneScale);
+        require(!placed.isNull(), "Can't map the page's position; refusing to place the answer");
+        require(placed.save(imagePath), "Cannot save answer image");
         QFile::setPermissions(imagePath,QFileDevice::ReadOwner|QFileDevice::WriteOwner);
         QString htmlPath=imagePath+".html";
         if(!renderedHtml.isEmpty()) {
@@ -272,7 +408,8 @@ void work(bool sendMode) {
         require(diaryGuard(), "Cancelled or page changed");
         state("Inserting image...");
         auto result=insertSceneImage(QJsonObject{{"path",imagePath},{"coordinateSpace","screen"},
-            {"x",area.x()+width/2.0},{"y",top+ink.height()/2.0},{"appendBelowContent",true}});
+            {"x",double(diaryAnswerCenterX())},{"y",top+ink.height()/2.0},{"screenHeight",ink.height()},
+            {"appendBelowContent",true}});
         if(!result.value("ok").toBool()) {
             QFile::remove(imagePath);
             QFile::remove(htmlPath);
@@ -378,7 +515,7 @@ extern "C" char *diary_probe(const char *arg) {
             try {
                 int id=QFontDatabase::addApplicationFont(base+"/Caveat.ttf");
                 QString text;for(int i=0;i<10;++i)text+="- [ ]\n";
-                auto rendered=renderDiaryMarkdown(text,QFontDatabase::applicationFontFamilies(id).first(),1174);
+                auto rendered=renderDiaryMarkdown(text,QFontDatabase::applicationFontFamilies(id).first(),diaryAnswerWidth());
                 check.insert("checkboxes",rendered.html.count("class=\"unchecked\""));
                 check.insert("height",rendered.image.height());
             } catch(const std::exception &e){check.insert("error",QString::fromUtf8(e.what()));}

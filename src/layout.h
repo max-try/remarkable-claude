@@ -1,18 +1,45 @@
 #pragma once
 #include <QImage>
 #include <QRect>
-// Include the top edge; only the side toolbar and bottom button margins are excluded.
-inline QRect diaryCaptureArea() { return QRect(150,0,1174,1752); }
-// The Claude button (inkDiary.qmd): one toolbar cell under the close button.
-inline QRect diaryButtonRect() { return QRect(1292,112,112,112); }
-// The Send button (inkDiary.qmd) appears left of it while email drafts are pending.
-inline QRect diarySendButtonRect() { return QRect(1180,112,124,112); }
+#include <QSize>
+#include <cmath>
+// reMarkable Paper Pro ("ferrari"), portrait at normal zoom. See docs/paper-pro/GEOMETRY.md.
+//
+// The screen (and the rm-shot screenshot) is 1620 x 2160. TO CONFIRM ON THE TABLET in
+// Stage 1: the screenshot size, the window size and that the window scale (DPR) is 1.
+inline QSize diaryScreenSize() { return QSize(1620,2160); }
+// The notebook toolbar is hidden while a request runs (inkDiary.qmd, diaryHideToolbar),
+// so the whole screen is page. Only our own buttons are masked out (below).
+// TO CONFIRM in Stage 1: nothing else (page number, title, zoom control) stays visible.
+inline QRect diaryCaptureArea() { return QRect(QPoint(0,0),diaryScreenSize()); }
+// Answers are drawn 1174 px wide, as on the reMarkable 2. The Paper Pro (229 ppi) and
+// rM2 (226 ppi) have almost the same pixel density, so this keeps the same physical
+// answer size (about 13 cm wide) and leaves every renderer unchanged. Centred on screen.
+inline int diaryAnswerWidth() { return 1174; }
+inline int diaryAnswerCenterX() { return diaryScreenSize().width()/2; }
+// Height budget for plots and other fixed-size answers, also kept from the rM2.
+inline int diaryAnswerMaxHeight() { return 1582; }
+// The Claude button (inkDiary.qmd): 72 x 72 at the right edge, 24 px in from the side
+// and 160 px up from the bottom, so it clears a toolbar moved to the bottom (112 px).
+// Masked with a 12 px margin. Keep these in step with inkDiary.qmd.
+inline QRect diaryButtonRect() { return QRect(1512,1916,96,96); }
+// The Send button (inkDiary.qmd), 120 x 72, 16 px left of it while email drafts are pending.
+inline QRect diarySendButtonRect() { return QRect(1376,1916,144,96); }
 // Keep our own buttons out of the page photo, the ink search and the unchanged-page check.
 inline void diaryMaskControls(QImage &screen) {
     for(const QRect &r:{diaryButtonRect(),diarySendButtonRect()})
         for(int y=r.top();y<=r.bottom()&&y<screen.height();++y)
             for(int x=r.left();x<=r.right()&&x<screen.width();++x)
                 screen.setPixelColor(x,y,Qt::white);
+}
+// Answer images are drawn in screen pixels; the notebook inserts an image at one scene
+// unit per image pixel. Resize by the measured scene units per screen pixel so the
+// answer appears at its drawn size. Scales outside 0.25..4 are treated as a bad mapping.
+inline QImage diaryScaleForScene(const QImage &image, double sceneUnitsPerPixel) {
+    if(!(sceneUnitsPerPixel>=0.25 && sceneUnitsPerPixel<=4)) return QImage();
+    if(std::abs(sceneUnitsPerPixel-1.0)<0.005) return image;
+    const int w=qMax(1,qRound(image.width()*sceneUnitsPerPixel)), h=qMax(1,qRound(image.height()*sceneUnitsPerPixel));
+    return image.scaled(w,h,Qt::IgnoreAspectRatio,Qt::SmoothTransformation);
 }
 #include <array>
 #include <vector>

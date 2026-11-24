@@ -1,5 +1,9 @@
-; Ink Diary for Claude — notebook button (reMarkable 2).
+; Ink Diary for Claude — notebook button (reMarkable Paper Pro, software 3.29.1.0).
 ; DocumentView selector from rmitchellscott/xovi-qmd-extensions (GPL-3.0-only).
+; The hashes are /qml/device/view/documentview/DocumentView.qml and FocusScope#root, the
+; same spot the Paper Pro port in howardpchen/remarkable-chatgpt patches on 3.28 (GPL-3.0).
+; TO CONFIRM in Stage 1 with the tablet's name map: these names, plus the notebook's own
+; `toolbar` and `zoomButton` ids, still exist on 3.29.1.0 (tools/paper-pro/check-hashtab.py).
 AFFECT [[1224665461898798997]]
     IMPORT QtQuick 2.15
     IMPORT net.asivery.XoviMessageBroker 2.0
@@ -8,20 +12,47 @@ AFFECT [[1224665461898798997]]
         INSERT {
             Rectangle {
                 id: inkDiaryControl
+                objectName: "inkDiaryControl"
                 z: 10000
-                // Framed button centred in the toolbar cell under the close button (rM2
-                // portrait toolbar: 112 px cells). diary.cpp masks this rect out of
-                // the page capture.
+                // 72 x 72 button at the right edge, 160 px up from the bottom so it clears
+                // the toolbar if that is moved to the bottom (112 px). src/layout.h masks
+                // this rect (and the Send button's) out of the page capture: keep in step.
+                // TO CONFIRM in Stage 1: the spot is free of the notebook's own controls.
                 anchors.right: parent.right
-                anchors.top: parent.top
-                anchors.topMargin: 138
-                anchors.rightMargin: 26
-                width: 60
-                height: 60
+                anchors.bottom: parent.bottom
+                anchors.rightMargin: 24
+                anchors.bottomMargin: 160
+                width: 72
+                height: 72
                 color: "white"
                 border.color: "black"
                 border.width: 2
-                radius: 6
+                radius: 8
+                // Set by the plugin while it reads the page, so the toolbar isn't in the
+                // photo. Bindings put back the notebook's own value when it is cleared.
+                // `toolbar` and `zoomButton` are DocumentView ids seen on 3.28; if 3.29
+                // renamed them, these stay null and the plugin says so instead of reading.
+                property bool diaryHideToolbar: false
+                readonly property var diaryToolbar: typeof toolbar !== "undefined" ? toolbar : null
+                readonly property var diaryZoomButton: typeof zoomButton !== "undefined" ? zoomButton : null
+                readonly property bool diaryToolbarFound: diaryToolbar !== null
+                readonly property bool diaryToolbarHidden: diaryToolbar !== null && diaryToolbar.visible === false
+                Binding {
+                    target: inkDiaryControl.diaryToolbar
+                    property: "visible"
+                    value: false
+                    when: inkDiaryControl.diaryHideToolbar && inkDiaryControl.diaryToolbar !== null
+                    restoreMode: Binding.RestoreBindingOrValue
+                }
+                Binding {
+                    target: inkDiaryControl.diaryZoomButton
+                    property: "visible"
+                    value: false
+                    when: inkDiaryControl.diaryHideToolbar && inkDiaryControl.diaryZoomButton !== null
+                    restoreMode: Binding.RestoreBindingOrValue
+                }
+                // Never leave the toolbar hidden if the notebook closes mid-request.
+                Component.onDestruction: diaryHideToolbar = false
                 property bool diaryBusy: false
                 property string diaryMessage: "Claude"
                 property int diaryDrafts: 0
@@ -29,26 +60,25 @@ AFFECT [[1224665461898798997]]
                 XoviMessageBroker { id: inkDiaryBroker }
                 Image {
                     anchors.centerIn: parent
-                    width: 44
-                    height: 44
+                    width: 52
+                    height: 52
                     source: "file:///home/root/.config/ink-diary/claude.svg"
-                    sourceSize.width: 44
-                    sourceSize.height: 44
+                    sourceSize.width: 52
+                    sourceSize.height: 52
                     visible: !inkDiaryControl.diaryBusy
                 }
                 Rectangle {
                     anchors.centerIn: parent
-                    width: 26
-                    height: 26
+                    width: 30
+                    height: 30
                     color: "black"
                     visible: inkDiaryControl.diaryBusy
                 }
                 Rectangle {
                     anchors.right: parent.right
-                    anchors.top: parent.bottom
-                    anchors.topMargin: 8
-                    anchors.rightMargin: 12
-                    width: 450
+                    anchors.bottom: parent.top
+                    anchors.bottomMargin: 12
+                    width: 520
                     height: statusText.implicitHeight + 28
                     color: "white"
                     border.color: "black"
@@ -62,7 +92,7 @@ AFFECT [[1224665461898798997]]
                         anchors.top: parent.top
                         anchors.margins: 14
                         text: inkDiaryControl.diaryMessage
-                        font.pixelSize: 24
+                        font.pixelSize: 28
                         wrapMode: Text.WordWrap
                         color: "black"
                     }
@@ -72,17 +102,17 @@ AFFECT [[1224665461898798997]]
                     anchors.right: parent.left
                     anchors.rightMargin: 16
                     anchors.verticalCenter: parent.verticalCenter
-                    width: 110
-                    height: 60
+                    width: 120
+                    height: 72
                     color: "white"
                     border.color: "black"
                     border.width: 2
-                    radius: 6
+                    radius: 8
                     visible: inkDiaryControl.diaryDrafts > 0 && !inkDiaryControl.diaryBusy
                     Text {
                         anchors.centerIn: parent
                         text: "Send " + inkDiaryControl.diaryDrafts
-                        font.pixelSize: 24
+                        font.pixelSize: 28
                         font.bold: true
                         color: "black"
                     }

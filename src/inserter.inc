@@ -178,6 +178,20 @@ QtObject {
         }
     }
 
+    // Scene units per screen pixel at (x, y), measured along the screen's x axis.
+    function screenScale(x, y) {
+        if (!nativeImageView) return -1
+        try {
+            const a = nativeImageView.viewToScene(nativeImageView.mapFromItem(null, x, y))
+            const b = nativeImageView.viewToScene(nativeImageView.mapFromItem(null, x + 100, y))
+            if (!a || !b) return -1
+            const s = Math.sqrt((b.x - a.x) * (b.x - a.x) + (b.y - a.y) * (b.y - a.y)) / 100
+            return isFinite(s) ? s : -1
+        } catch (exception) {
+            return -1
+        }
+    }
+
     function insertImageFile(fileUrl, x, y, coordinateSpace) {
         const controller = sceneController
         if (!controller)
@@ -504,6 +518,38 @@ TextPayload loadTextPayload(const QJsonObject &request)
     return payload;
 }
 
+// The visible view item of the page's controller that maps screen points to scene points.
+QObject *findImageView(QObject *controller)
+{
+    for (QObject *object : runtimeObjects()) {
+        if (!qobject_cast<QQuickItem *>(object) || !isVisibleObject(object) ||
+            controllerProperty(object,"controller") != controller) continue;
+        for (int i=0; i<object->metaObject()->methodCount(); ++i)
+            if (object->metaObject()->method(i).name()=="viewToScene") return object;
+    }
+    return nullptr;
+}
+
+// Scene units per screen pixel at a screen point, or -1 if the page can't be mapped.
+// Must run on the GUI thread.
+double screenToSceneScale(const QPointF &at)
+{
+    const ActivePageContext context = findActivePage();
+    if (!context.controller) return -1;
+    QObject *imageView = findImageView(context.controller);
+    if (!imageView) return -1;
+    QObject *helper = ensureHelper(nullptr);
+    if (!helper) return -1;
+    helper->setProperty("nativeImageView", QVariant::fromValue(imageView));
+    QVariant result;
+    if (!QMetaObject::invokeMethod(helper, "screenScale", Q_RETURN_ARG(QVariant, result),
+                                   Q_ARG(QVariant, QVariant(at.x())), Q_ARG(QVariant, QVariant(at.y()))))
+        return -1;
+    bool ok = false;
+    const double scale = result.toDouble(&ok);
+    return ok ? scale : -1;
+}
+
 QJsonObject insertSceneImage(const QJsonObject &request)
 {
     const QString path = request.value("path").toString();
@@ -534,13 +580,7 @@ QJsonObject insertSceneImage(const QJsonObject &request)
         if (!diaryGuard()) { operationResult = "page-changed"; return; }
         QObject *imageView = nullptr;
         if (coordinateSpace == "screen") {
-            for (QObject *object : runtimeObjects()) {
-                if (!qobject_cast<QQuickItem *>(object) || !isVisibleObject(object) ||
-                    controllerProperty(object,"controller") != context.controller) continue;
-                for (int i=0; i<object->metaObject()->methodCount(); ++i)
-                    if (object->metaObject()->method(i).name()=="viewToScene") { imageView=object; break; }
-                if (imageView) break;
-            }
+            imageView = findImageView(context.controller);
             if (!imageView) { operationResult="screen-mapping-unavailable"; return; }
         }
         pageId = context.pageId;
@@ -551,7 +591,9 @@ QJsonObject insertSceneImage(const QJsonObject &request)
             return;
         }
         helper->setProperty("nativeImageView", QVariant::fromValue(imageView));
-        helper->setProperty("nativeImageHeight", image.height());
+        // The image's height on screen, for the gap below existing content. The image file
+        // may have been resized to scene units (diaryScaleForScene), so callers pass it.
+        helper->setProperty("nativeImageHeight", request.value("screenHeight").toDouble(image.height()));
         helper->setProperty("appendBelowContent", request.value("appendBelowContent").toBool());
         helper->setProperty("sceneController", QVariant::fromValue(context.controller));
         helper->setProperty("nativeImageBounds", geometry.value("bounds").toObject().toVariantMap());
@@ -699,7 +741,7 @@ bool isSafeInputPath(const QString &path)
 
 bool isRemarkable2()
 {
-    // The reMarkable 2 is the only supported 32-bit target. Prefer that stable
+    // Legacy: the reMarkable 2 was the only 32-bit target (pen-input drawing only). Prefer that stable
     // distinction because /etc/hwrevision has used several text formats.
     const QString architecture = QSysInfo::currentCpuArchitecture();
     if (architecture.startsWith("arm") && !architecture.contains("64"))

@@ -22,3 +22,6 @@ c++ -std=c++17 -fPIC tests/calendar.cpp -o build-host/calendar $(pkg-config --cf
 QT_QPA_PLATFORM=offscreen ./build-host/calendar
 c++ -std=c++17 -fPIC tests/email.cpp -o build-host/email $(pkg-config --cflags --libs Qt6Network Qt6Gui Qt6Core)
 QT_QPA_PLATFORM=offscreen ./build-host/email
+c++ -std=c++17 -fPIC tests/qmd.cpp -o build-host/qmd $(pkg-config --cflags --libs Qt6Quick Qt6Qml Qt6Gui Qt6Core)
+QT_QPA_PLATFORM=offscreen ./build-host/qmd
+if command -v node >/dev/null; then node tests/append.cjs; fi
